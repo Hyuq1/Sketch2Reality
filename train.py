@@ -13,9 +13,9 @@ import lib
 import lib.workspace as ws
 from lib.utils import *
 
-def save_logs(
-    experiment_directory,
-    loss_sdf_log,
+def persist_training_state(
+    training_dir,
+    loss_sdf_hist,
     loss_sdf_test_log,
     epoch,
 ):
@@ -23,34 +23,34 @@ def save_logs(
     torch.save(
         {
             "epoch": epoch,
-            "loss_sdf": loss_sdf_log,
+            "loss_sdf": loss_sdf_hist,
             "loss_sdf_test": loss_sdf_test_log,
         },
-        os.path.join(experiment_directory, ws.logs_filename),
+        os.path.join(training_dir, ws.logs_filename),
     )
 
 
-def load_logs(experiment_directory):
+def retrieve_training_state(training_dir):
 
-    full_filename = os.path.join(experiment_directory, ws.logs_filename)
+    full_filename = os.path.join(training_dir, ws.logs_filename)
 
     if not os.path.isfile(full_filename):
         raise Exception('log file "{}" does not exist'.format(full_filename))
 
-    data = torch.load(full_filename)
+    checkpoint_data = torch.load(full_filename)
 
     return (
-        data["loss_sdf"],
-        data["loss_sdf_test"],
-        data["epoch"],
+        checkpoint_data["loss_sdf"],
+        checkpoint_data["loss_sdf_test"],
+        checkpoint_data["epoch"],
     )
 
 
-def clip_logs(loss_sdf_log,loss_regl_log,loss_sdf_test_log,loss_regl_test_log, lr_log, timing_log, lat_mag_log, param_mag_log, epoch):
+def clip_logs(loss_sdf_hist,loss_regl_log,loss_sdf_test_log,loss_regl_test_log, lr_log, timing_log, lat_mag_log, param_mag_log, epoch):
 
-    iters_per_epoch = len(loss_sdf_log) // len(lr_log)
+    iters_per_epoch = len(loss_sdf_hist) // len(lr_log)
 
-    loss_sdf_log = loss_sdf_log[: (iters_per_epoch * epoch)]
+    loss_sdf_hist = loss_sdf_hist[: (iters_per_epoch * epoch)]
     loss_regl_log = loss_regl_log[: (iters_per_epoch * epoch)]
 
     iters_per_epoch = len(loss_sdf_test_log) // len(lr_log)
@@ -63,12 +63,12 @@ def clip_logs(loss_sdf_log,loss_regl_log,loss_sdf_test_log,loss_regl_test_log, l
     for n in param_mag_log:
         param_mag_log[n] = param_mag_log[n][:epoch]
 
-    return (loss_sdf_log,loss_regl_log,loss_sdf_test_log,loss_regl_test_log, lr_log, timing_log, lat_mag_log, param_mag_log)
+    return (loss_sdf_hist,loss_regl_log,loss_sdf_test_log,loss_regl_test_log, lr_log, timing_log, lat_mag_log, param_mag_log)
 
 
-def main_function(experiment_directory, continue_from):
+def train_model(training_dir, resume_from):
 
-    specs = ws.load_experiment_specifications(experiment_directory)
+    specs = ws.load_experiment_specifications(training_dir)
 
     print("Experiment description: \n" + ' '.join([str(elem) for elem in specs["Description"]]))
 
@@ -97,14 +97,14 @@ def main_function(experiment_directory, continue_from):
     grad_clip = get_spec_with_default(specs, "GradientClipNorm", None)
 
     def save_latest(epoch):
-        save_model(experiment_directory, "encoder_latest.pth", encoder, epoch)
-        save_model(experiment_directory, "decoder_latest.pth", decoder, epoch)
-        save_optimizer(experiment_directory, "latest.pth", optimizer_all, epoch)
+        save_model(training_dir, "encoder_latest.pth", encoder, epoch)
+        save_model(training_dir, "decoder_latest.pth", decoder, epoch)
+        save_optimizer(training_dir, "latest.pth", optimizer_all, epoch)
 
     def save_checkpoints(epoch):
-        save_model(experiment_directory, "encoder_" + str(epoch) + ".pth", encoder, epoch)
-        save_model(experiment_directory, "decoder_" +str(epoch) + ".pth", decoder, epoch)
-        save_optimizer(experiment_directory, str(epoch) + ".pth", optimizer_all, epoch)
+        save_model(training_dir, "encoder_" + str(epoch) + ".pth", encoder, epoch)
+        save_model(training_dir, "decoder_" +str(epoch) + ".pth", decoder, epoch)
+        save_optimizer(training_dir, str(epoch) + ".pth", optimizer_all, epoch)
 
     def signal_handler(sig, frame):
         print("Stopping early...")
@@ -190,26 +190,26 @@ def main_function(experiment_directory, continue_from):
         ]
     )
 
-    loss_sdf_log = []
+    loss_sdf_hist = []
     loss_sdf_test_log = []
     start_epoch = 1
 
-    if continue_from is not None:
+    if resume_from is not None:
 
-        print('continuing from "{}"'.format(continue_from))
+        print('continuing from "{}"'.format(resume_from))
 
 
         model_epoch = ws.load_model_parameters(
-            experiment_directory, continue_from, encoder, decoder
+            training_dir, resume_from, encoder, decoder
         )
 
         optimizer_epoch = load_optimizer(
-            experiment_directory, continue_from + ".pth", optimizer_all
+            training_dir, resume_from + ".pth", optimizer_all
         )
 
-        loss_sdf_log,loss_sdf_test_log, log_epoch = load_logs(experiment_directory)
+        loss_sdf_hist,loss_sdf_test_log, log_epoch = retrieve_training_state(training_dir)
         if not log_epoch == model_epoch:
-            loss_sdf_log,loss_sdf_test_log= clip_logs(loss_sdf_log,loss_sdf_test_log)
+            loss_sdf_hist,loss_sdf_test_log= clip_logs(loss_sdf_hist,loss_sdf_test_log)
 
         if not (model_epoch == optimizer_epoch):
             raise RuntimeError(
@@ -274,7 +274,7 @@ def main_function(experiment_directory, continue_from):
                 batch_loss = sdf_loss
             batch_loss.backward()
 
-            loss_sdf_log.append(sdf_loss.cpu())
+            loss_sdf_hist.append(sdf_loss.cpu())
 
             if grad_clip is not None:
                 torch.nn.utils.clip_grad_norm_(decoder.parameters(), grad_clip)
@@ -325,9 +325,9 @@ def main_function(experiment_directory, continue_from):
         if epoch % log_frequency == 0:
 
             save_latest(epoch)
-            save_logs(
-                experiment_directory,
-                loss_sdf_log,
+            persist_training_state(
+                training_dir,
+                loss_sdf_hist,
                 loss_sdf_test_log,
                 epoch,
             )
@@ -341,20 +341,16 @@ if __name__ == "__main__":
     arg_parser.add_argument(
         "--experiment",
         "-e",
-        dest="experiment_directory",
+        dest="training_dir",
         required=True,
-        help="The experiment directory. This directory should include "
-        + "experiment specifications in 'specs.json', and logging will be "
-        + "done in this directory as well.",
+        help="Directory for the experiment. Include 'specs.json' and this will also be used for logging.",
     )
     arg_parser.add_argument(
-        "--continue",
-        "-c",
-        dest="continue_from",
-        help="A snapshot to continue from. This can be 'latest' to continue"
-        + "from the latest running snapshot, or an integer corresponding to "
-        + "an epochal snapshot.",
+        "--resume_checkpoint",
+        "-r",
+        dest="resume_checkpoint",
+        help="Checkpoint to resume from; 'latest' or epoch number",
     )
 
     args = arg_parser.parse_args()
-    main_function(args.experiment_directory, args.continue_from)
+    train_model(args.training_dir, args.resume_from)
