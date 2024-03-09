@@ -1,4 +1,5 @@
 # Sketch2Reality：Precision-Friendly 3D Generation Technology
+![image](https://github.com/Hyuq1/Sketch2Reality/blob/main/img/network.png)
 # Environment
 `git clone https://github.com/Hyuq1/Sketch2Reality`
 
@@ -11,7 +12,7 @@ install dependencies:`pip install -r requirements.txt`
 build and install Soft Rasterizer
 # Data
 Our data includes mesh models, input sketches, and SDF samples.
-We provide our own dataset for the [car](https://github.com/Hyuq1/Sketch2Reality/edit/main/README.md) class and the corresponding training weights. You can simply download and unzip it into the `/data` folder to get going.
+We provide our own dataset for the [car](https://github.com/Hyuq1/Sketch2Reality/edit/main/README.md) class. You can simply download and unzip it into the `/data` folder to get going.the corresponding training [weights]().
 # Mesh data
 We use data from [ShapeNetCore.v1](https://shapenet.org/).
 
