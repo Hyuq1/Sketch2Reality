@@ -12,7 +12,7 @@ install dependencies:`pip install -r requirements.txt`
 build and install Soft Rasterizer
 # Data
 Our data includes mesh models, input sketches, and SDF samples.
-We provide our own dataset for the [car](https://github.com/Hyuq1/Sketch2Reality/edit/main/README.md) class. You can simply download and unzip it into the `/data` folder to get going.the corresponding training [weights]().
+We provide our own dataset for the [car](https://github.com/Hyuq1/Sketch2Reality/edit/main/README.md) class. You can simply download and unzip it into the `/data` folder to get going.the corresponding training [weights](https://pan.baidu.com/s/1Pi394u6sMiW6N-rsO6j5Lg?pwd=nlil).
 ## Mesh data
 We use data from [ShapeNetCore.v1](https://shapenet.org/).
 
