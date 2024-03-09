@@ -72,11 +72,11 @@ def vertex_symmetry_loss(mesh, sym_plane, device, asym_conf_scores=False, sym_bi
     return avg_sym_loss
 
 
-def main_function(experiment_directory, continue_from,  iterations, marching_cubes_resolution, regularize):
+def execute_reconstruction(proc_dir, resume_point,  num_iters, marching_cubes_resolution, regularize):
 
     device=torch.device('cuda:0')
 #    torch.cuda.set_device(5)
-    specs = ws.load_experiment_specifications(experiment_directory)
+    specs = ws.load_experiment_specifications(proc_dir)
 
     print("Reconstruction from experiment description: \n" + ' '.join([str(elem) for elem in specs["Description"]]))
 
@@ -103,9 +103,6 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
     with open(test_split_file, "r") as f:
         test_split = json.load(f)
 
-#    sdf_dataset_test = lib.data.RGBA2SDF(
-#        data_source, test_split, num_samp_per_scene, is_train=False, num_views = specs["NumberOfViews"]
-#    )
     sdf_dataset_test = lib.data_new.RGBA2SDF(
         data_source, class_id, test_split, num_samp_per_scene, is_train=False, num_views = specs["NumberOfViews"]
     )
@@ -122,29 +119,25 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
     num_scenes = len(sdf_loader_test)
     print("There are {} scenes".format(num_scenes))
 
-    print('Loading epoch "{}"'.format(continue_from))
+    print('Loading epoch "{}"'.format(resume_point))
     
    
 
     ws.load_model_parameters(
-        experiment_directory, continue_from, encoder, decoder
+        proc_dir, resume_point, encoder, decoder
     )
     encoder.eval()
 
     optimization_meshes_dir = os.path.join(
-        args.experiment_directory, ws.reconstructions_subdir, str(continue_from)
+        args.proc_dir, ws.reconstructions_subdir, str(resume_point)
     )
 
     if not os.path.isdir(optimization_meshes_dir):
         os.makedirs(optimization_meshes_dir)
 
-#    for sdf_data, image, intrinsic, extrinsic, name, id, intrinsic_flip, extrinsic_flip in sdf_loader_test:
     for sdf_data, image, intrinsic, extrinsic, name in sdf_loader_test:
 
         out_name = name[0].split("/")[-1]
-#        number = id.item()
-#        out_name = out_name + f'_{number}'
-        # store input stuff
         image_filename = os.path.join(optimization_meshes_dir, out_name, "input.png")
         # skip if it is already there
         if os.path.exists(os.path.dirname(image_filename)):
@@ -157,10 +150,6 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
 
         image_export = 255*image[0].permute(1,2,0).cpu().numpy()
         imageio.imwrite(image_filename, image_export.astype(np.uint8))
-
-        # image_filename = os.path.join(optimization_meshes_dir, out_name, "input_silhouette.png")
-        # image_export = 255*image[0].permute(1,2,0).cpu().numpy()[...,3]
-        # imageio.imwrite(image_filename, image_export.astype(np.uint8))
 
         # get latent code from image
 #        import pdb
@@ -184,17 +173,7 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
         t_cuda = torch.tensor(extrinsic[:, 0:3, 3]).float().cuda()
         lights = PointLights(device=device, location=[[0.0, 0.0, 3.0]])
         cameras = PerspectiveCameras(device=device, focal_length=-K_cuda[:,0,0] / K_cuda[:,0,2], image_size=((IMG_SIZE, IMG_SIZE),), R=R_cuda, T=t_cuda)
-        #flip cameras
-#        K_cuda_flip = torch.tensor(intrinsic_flip[:, 0:3, 0:3]).float().cuda()
-#        R_cuda_flip = torch.tensor(extrinsic_flip[:, 0:3, 0:3]).float().cuda().permute(0, 2, 1)
-#        t_cuda_flip = torch.tensor(extrinsic_flip[:, 0:3, 3]).float().cuda()
-        # lights = PointLights(device=device, location=[[0.0, 0.0, 3.0]])
-#        cameras_flip = PerspectiveCameras(device=device, focal_length=-K_cuda_flip[:, 0, 0] / K_cuda_flip[:, 0, 2],
-#                                     image_size=((IMG_SIZE, IMG_SIZE),), R=R_cuda_flip, T=t_cuda_flip)
-        
-        
-        
-        
+                
         raster_settings = RasterizationSettings(
             image_size=IMG_SIZE,
             blur_radius=0.000001,
@@ -219,27 +198,10 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
             cameras=cameras,
             raster_settings=raster_settings
         )
-        #flip instantiate renderers
-#        silhouette_renderer_flip = MeshRenderer(
-#            rasterizer=MeshRasterizer(
-#                cameras=cameras_flip,
-#                raster_settings=raster_settings_soft
-#            ),
-#            shader=SoftSilhouetteShader()
-#        )
-#        depth_renderer_flip = MeshRasterizer(
-#            cameras=cameras_flip,
-#            raster_settings=raster_settings
-#        )
-        
-        
-        
+ 
         
         renderer = Renderer(silhouette_renderer, depth_renderer, image_size=IMG_SIZE)
-#        renderer_flip = Renderer(silhouette_renderer_flip, depth_renderer_flip, image_size=IMG_SIZE)
         
-        
-
         meshes = Meshes(verts_dr, faces_dr)
         verts_shape = meshes.verts_packed().shape
         verts_rgb = torch.full([1, verts_shape[0], 3], 0.5, device=device, requires_grad=False)
@@ -258,10 +220,6 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
             image_out_filename = os.path.join(optimization_meshes_dir, out_name, "predicted.png")
             imageio.imwrite(image_out_filename, image_out_export.astype(np.uint8))
 
-
-          
-        
-
         latent_for_optim = torch.tensor(latent, requires_grad = True)
         lr= 5e-5
         optimizer = torch.optim.Adam([latent_for_optim], lr=lr)
@@ -273,7 +231,7 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
         log_chd = []
         log_nc = []
 
-        for e in range(iterations+1):
+        for e in range(num_iters+1):
 
             optimizer.zero_grad()
 
@@ -294,38 +252,9 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
             normal, silhouette = renderer(meshes_world=meshes_dr, cameras=cameras, lights=lights)
             
             #对称置信度
-            asym_conf_scores = deform_net(image[:, :3, :], meshes_dr, R_cuda, t_cuda)
-            
-            #flip
-#            image_out_export_o = 255 * silhouette.detach().cpu().numpy()[0]
-#            image_out_filename = os.path.join(optimization_meshes_dir, out_name, "origin_sil.png")
-#            imageio.imwrite(image_out_filename, image_out_export_o.astype(np.uint8))
-#
-#            normal_flip, silhouette_flip = renderer_flip(meshes_world=meshes_dr, cameras=cameras_flip, lights=lights)
-#            silhouette_flip = torch.flip(silhouette_flip, [2])
-#            silhouette_flip_1 = torch.flip(silhouette_flip, [1])
-            
-#            image_out_export_f = 255 * silhouette_flip.detach().cpu().numpy()[0]
-#            image_out_filename = os.path.join(optimization_meshes_dir, out_name, "flip_sil.png")
-#            imageio.imwrite(image_out_filename, image_out_export_f.astype(np.uint8))
-        
-#            image_out_export_f = 255 * silhouette_flip.detach().cpu().numpy()[0]
-#            image_out_filename = os.path.join(optimization_meshes_dir, out_name, "flip_sil.png")
-#            imageio.imwrite(image_out_filename, image_out_export_f.astype(np.uint8))
-            
-#            image_out_export_f = 255 * silhouette_flip_1.detach().cpu().numpy()[0]
-#            image_out_filename = os.path.join(optimization_meshes_dir, out_name, "flip_sil_1.png")
-#            imageio.imwrite(image_out_filename, image_out_export_f.astype(np.uint8))
-            
-            
-            
+            asym_conf_scores = deform_net(image[:, :3, :], meshes_dr, R_cuda, t_cuda)           
             # compute loss
             loss_silhouette = (torch.abs(silhouette - image[:,3].cuda())).mean()
-          
-            
-
-
-
             # now store upstream gradients
             loss_silhouette.backward(retain_graph=True)
             dL_dx_i = xyz_upstream.grad
@@ -335,14 +264,6 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
             # log stuff
             with torch.no_grad():
                 log_silhouette.append(loss_silhouette.detach().cpu().numpy())
-
-                # meshes_gt_pts = sample_points_from_meshes(meshes_gt)
-                meshes_dr_pts = sample_points_from_meshes(meshes_dr)
-                # metric_chd, _ = chamfer_distance(meshes_gt_pts, meshes_dr_pts)
-                # log_chd.append(metric_chd.detach().cpu().numpy())
-                #
-                # log_nc.append(compute_normal_consistency(normal_tgt, normal))
-
                 log_latent.append(torch.mean((latent_for_optim).pow(2)).detach().cpu().numpy())
 
 
@@ -361,14 +282,7 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
             dL_ds_i = -torch.matmul(dL_dx_i.unsqueeze(1), normals.unsqueeze(-1)).squeeze(-1)
             #对称损失
             loss_symmetry = vertex_symmetry_loss(meshes_dr, [0, 0, 1], device=torch.device("cuda:0"), asym_conf_scores=asym_conf_scores, sym_bias=0.005)
-            
-            #img sym loss
-#            loss_sil_sym = (torch.abs(silhouette - silhouette_flip)).mean()
             # finally assemble full backward pass
-            
-        
-
-
             loss_backward = torch.sum(dL_ds_i * pred_sdf) + regularize * torch.mean((latent_for_optim).pow(2)) + loss_symmetry * 0.1
             loss_backward.backward()
             # and update params
@@ -389,13 +303,8 @@ def main_function(experiment_directory, continue_from,  iterations, marching_cub
             meshes_dr.textures = TexturesVertex(verts_features=verts_rgb)
 
             normal, silhouette = renderer(meshes_world=meshes_dr, cameras=cameras, lights=lights)
-
             image_out_export = 255*silhouette.detach().cpu().numpy()[0]
-            # image_out_filename = os.path.join(optimization_meshes_dir, out_name, "refined_silhouette.png")
-            # imageio.imwrite(image_out_filename, image_out_export.astype(np.uint8))
             image_out_export = 255*normal.detach().cpu().numpy()[0]
-            # image_out_filename = os.path.join(optimization_meshes_dir, out_name, "refined.png")
-            # imageio.imwrite(image_out_filename, image_out_export.astype(np.uint8))
 
         log_filename = os.path.join(optimization_meshes_dir, out_name,  "log_silhouette.npy")
         np.save(log_filename, log_silhouette)
@@ -418,22 +327,18 @@ if __name__ == "__main__":
 
     arg_parser = argparse.ArgumentParser(description="Train a DeepSDF autodecoder")
     arg_parser.add_argument(
-        "--experiment",
+        "--experiment_dir",
         "-e",
-        dest="experiment_directory",
+        dest="proc_dir",
         required=True,
-        help="The experiment directory. This directory should include "
-        + "experiment specifications in 'specs.json', and logging will be "
-        + "done in this directory as well.",
+        help="Path to the experiment directory containing 'specs.json' for configuration and where outputs will be logged.",
     )
     arg_parser.add_argument(
-        "--continue",
+        "--checkpoint",
         "-c",
-        dest="continue_from",
+        dest="resume_point",
         default="latest",
-        help="A snapshot to continue from. This can be 'latest' to continue"
-        + "from the latest running snapshot, or an integer corresponding to "
-        + "an epochal snapshot.",
+        help="The training checkpoint to resume from ('latest' or specific epoch number).",
     )
     arg_parser.add_argument(
         "--resolution",
@@ -441,11 +346,11 @@ if __name__ == "__main__":
         help="Marching cubes resolution for reconstructed surfaces.",
     )
     arg_parser.add_argument(
-        "--iterations",
+        "--refinement_iters",
         default=100,
-        help="Number of refinement iterations.",
+        help="Number of refinement num_iters.",
     )
-    arg_parser.add_argument("--regularize", default=0.0, help="L2 regularization weight on latent vector")
+    arg_parser.add_argument("--regularize", default=0.0, help="Weight for the L2 regularization on the latent code during refinement.")
 
     args = arg_parser.parse_args()
-    main_function(args.experiment_directory, args.continue_from, int(args.iterations), int(args.resolution), float(args.regularize))
+    execute_reconstruction(args.proc_dir, args.resume_point, int(args.num_iters), int(args.resolution), float(args.regularize))
