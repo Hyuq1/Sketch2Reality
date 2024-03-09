@@ -19,7 +19,7 @@ you can training a model for car:
 
 After the model is trained, you can refine the rough model by running:
 
-`python reconstruct_last_sym.py`
+`python refine.py -e experiments/car_new`
 
 Finally, you can test chamfer distance and Voxel IoU by running:
 
