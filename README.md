@@ -13,13 +13,13 @@ build and install Soft Rasterizer
 # Data
 Our data includes mesh models, input sketches, and SDF samples.
 We provide our own dataset for the [car](https://github.com/Hyuq1/Sketch2Reality/edit/main/README.md) class. You can simply download and unzip it into the `/data` folder to get going.the corresponding training [weights]().
-# Mesh data
+## Mesh data
 We use data from [ShapeNetCore.v1](https://shapenet.org/).
 
-# SDF data
+## SDF data
 We use process_data in [DeepSDF](https://github.com/facebookresearch/DeepSDF) to perform SDF sampling on the mesh of the ShapeNetCore.v1 dataset.
 
-# Sketch data
+## Sketch data
 We use the canny algorithm to extract lines from the Image in [DISN](https://github.com/laughtervv/DISN) to obtain the input synthetic sketches.
 
 # Trainning
