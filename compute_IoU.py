@@ -6,11 +6,6 @@ from scipy.io import loadmat
 import numpy as np
 import trimesh
 import skimage
-import torch
-
-import soft_renderer as sr
-import soft_renderer.functional as srf
-from pytorch3d.loss import chamfer_distance
 import skimage.measure
 from pytorch3d.io import load_ply
 from pytorch3d.io import load_obj
